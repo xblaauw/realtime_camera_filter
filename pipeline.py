@@ -4,14 +4,8 @@ import cv2
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple
-import tempfile
+import subprocess
 import shutil
-
-try:
-    from moviepy import VideoFileClip
-    MOVIEPY_AVAILABLE = True
-except ImportError:
-    MOVIEPY_AVAILABLE = False
 
 
 class SobelEdgeFilter:
@@ -240,7 +234,6 @@ class VideoPipeline:
             try:
                 print("Merging audio from source video...")
                 # Use ffmpeg directly to copy audio stream from source
-                import subprocess
                 result = subprocess.run([
                     'ffmpeg', '-y',
                     '-i', str(temp_video),

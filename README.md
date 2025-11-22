@@ -182,8 +182,8 @@ pipeline.process_realtime()
 - `torch >= 2.9.1`
 - `torchvision >= 0.24.1`
 - `opencv-python >= 4.12.0`
-- `moviepy >= 2.2.1` (for audio handling)
 - `numpy >= 2.2.6`
+- `ffmpeg` (system package for audio handling)
 
 ## Examples
 
@@ -234,4 +234,4 @@ Contributions welcome! Feel free to:
 
 ## Acknowledgments
 
-Built with PyTorch, OpenCV, and MoviePy.
+Built with PyTorch, OpenCV, and ffmpeg.
