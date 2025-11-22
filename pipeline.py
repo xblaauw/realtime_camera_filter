@@ -17,8 +17,19 @@ except ImportError:
 class SobelEdgeFilter:
     """Sobel edge detection filter using PyTorch."""
 
-    def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+    def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu",
+                 threshold: float = 0.1, blur_kernel_size: int = 3):
+        """
+        Initialize Sobel edge filter.
+
+        Args:
+            device: Device to run on (cuda/cpu)
+            threshold: Minimum edge strength (0.0-1.0). Lower = more edges, Higher = fewer edges
+            blur_kernel_size: Size of Gaussian blur kernel (odd number, 0 to disable)
+        """
         self.device = device
+        self.threshold = threshold
+        self.blur_kernel_size = blur_kernel_size
 
         # Define Sobel kernels for X and Y gradients
         sobel_x = torch.tensor([[-1, 0, 1],
@@ -44,6 +55,10 @@ class SobelEdgeFilter:
         Returns:
             Edge-detected frame as numpy array (H, W, C) in BGR format
         """
+        # Apply Gaussian blur if enabled (reduces noise and makes edges smoother)
+        if self.blur_kernel_size > 0:
+            frame = cv2.GaussianBlur(frame, (self.blur_kernel_size, self.blur_kernel_size), 0)
+
         # Convert BGR to RGB and normalize to [0, 1]
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         frame_tensor = torch.from_numpy(frame_rgb).float() / 255.0
@@ -69,6 +84,10 @@ class SobelEdgeFilter:
 
         # Normalize to [0, 1]
         edge_tensor = edge_tensor / edge_tensor.max() if edge_tensor.max() > 0 else edge_tensor
+
+        # Apply threshold to filter out weak edges
+        if self.threshold > 0:
+            edge_tensor = torch.where(edge_tensor > self.threshold, edge_tensor, torch.zeros_like(edge_tensor))
 
         # Convert back to numpy array [H, W, C] in BGR format
         edge_frame = edge_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
