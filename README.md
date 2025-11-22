@@ -1,16 +1,17 @@
 # Real-time Camera Filter
 
-A PyTorch-based video processing pipeline for applying Sobel edge detection to video files and webcam streams. Designed for real-time performance with GPU acceleration support.
+A modular video processing pipeline with multiple real-time filters for video files and webcam streams. Features Sobel edge detection, cartoon effects, thermal vision, and pixelation - all with GPU acceleration support.
 
 ![Example output with blur=3, threshold=0.0](examples/screenshot_from_feed.png)
-*Real-time edge detection with `--blur 3 --threshold 0.0`*
+*Real-time Sobel edge detection with `--filter sobel --blur 3 --threshold 0.0`*
 
 ## Features
 
-- **Real-time webcam processing** with live edge detection preview
+- **Four built-in filters**: Sobel edge detection, cartoon/comic effect, thermal vision, and pixelation
+- **Real-time webcam processing** with live preview
 - **Video file processing** with audio preservation
 - **GPU acceleration** via PyTorch (CUDA support)
-- **Adjustable parameters** for edge detection sensitivity and smoothing
+- **Adjustable parameters** for fine-tuning each filter
 - **Modular architecture** - easy to extend with custom filters
 - Command-line interface for both webcam and video processing
 
@@ -38,65 +39,107 @@ uv sync
 
 ### Webcam Processing
 
-Process your webcam feed in real-time with Sobel edge detection:
+Process your webcam feed in real-time with various filters:
 
 ```bash
-python webcam.py [camera_id] [--threshold THRESHOLD] [--blur BLUR]
+python webcam.py [camera_id] --filter FILTER [filter-options]
 ```
 
-**Examples:**
+**Filter Options:**
+
+**Sobel Edge Detection** (default):
 ```bash
-# Use default settings (camera 0, threshold=0.03, blur=7)
-python webcam.py
-
-# Use camera 1 with more forgiving edge detection
-python webcam.py 1 --threshold 0.02 --blur 9
-
-# Sharper edges, less smoothing
-python webcam.py 0 --threshold 0.1 --blur 3
+python webcam.py --filter sobel
+python webcam.py --filter sobel --threshold 0.03 --blur 7
 ```
+- `--threshold` (0.0-1.0): Lower = more edges (default: 0.03)
+- `--blur` (odd int): Higher = smoother edges (default: 7)
+
+**Cartoon/Comic Effect**:
+```bash
+python webcam.py --filter cartoon
+python webcam.py --filter cartoon --color-levels 6 --edge-threshold 0.15
+```
+- `--edge-threshold` (0.0-1.0): Lower = more edges (default: 0.2)
+- `--color-levels` (4-16): Lower = more cartoony (default: 8)
+- `--blur-d` (5-15): Higher = smoother colors (default: 9)
+
+**Thermal Vision**:
+```bash
+python webcam.py --filter thermal
+python webcam.py --filter thermal --colormap hot --contrast 2.0
+```
+- `--colormap`: jet, hot, inferno, cool, bone, viridis (default: jet)
+- `--brightness` (0.5-2.0): Higher = brighter (default: 1.0)
+- `--contrast` (0.5-3.0): Higher = more contrast (default: 1.5)
+
+**Pixelation**:
+```bash
+python webcam.py --filter pixel
+python webcam.py --filter pixel --pixel-size 32 --smooth
+```
+- `--pixel-size` (4-64): Higher = more pixelated (default: 16)
+- `--smooth`: Smooth pixel edges instead of hard edges
 
 **Controls:**
 - Press `q` to quit the preview window
-
-**Parameters:**
-- `camera_id`: Webcam device ID (default: 0)
-- `--threshold`: Edge detection threshold (0.0-1.0). Lower = more edges (default: 0.03)
-- `--blur`: Gaussian blur kernel size (odd number). Higher = smoother edges (default: 7)
 
 ### Video File Processing
 
 Process video files while preserving audio:
 
 ```bash
-python process_input.py INPUT_VIDEO [OUTPUT_VIDEO] [options]
+python process_input.py INPUT_VIDEO [OUTPUT_VIDEO] --filter FILTER [filter-options]
 ```
 
 **Examples:**
 ```bash
-# Process with auto-generated output name
-python process_input.py input/video.mp4
+# Sobel edge detection
+python process_input.py input/video.mp4 --filter sobel --threshold 0.05
 
-# Custom output location
-python process_input.py input/video.mp4 output/edges.mp4
+# Cartoon effect
+python process_input.py input/video.mp4 --filter cartoon --color-levels 6
 
-# Custom edge detection settings
-python process_input.py input/video.mp4 --threshold 0.05 --blur 5
+# Thermal vision with hot colormap
+python process_input.py input/video.mp4 --filter thermal --colormap hot
+
+# Pixelation with smooth edges
+python process_input.py input/video.mp4 --filter pixel --pixel-size 24 --smooth
 
 # Show preview while processing
-python process_input.py input/video.mp4 --preview
+python process_input.py input/video.mp4 --filter cartoon --preview
 
 # Process without preserving audio
-python process_input.py input/video.mp4 --no-audio
+python process_input.py input/video.mp4 --filter sobel --no-audio
 ```
 
-**Parameters:**
+**General Parameters:**
 - `INPUT_VIDEO`: Path to input video file (required)
-- `OUTPUT_VIDEO`: Path to output video file (optional, defaults to `output/edge_<input_name>`)
-- `--threshold`: Edge detection threshold (0.0-1.0). Lower = more edges (default: 0.03)
-- `--blur`: Gaussian blur kernel size (odd number). Higher = smoother edges (default: 7)
+- `OUTPUT_VIDEO`: Path to output video file (optional, defaults to `output/<filter>_<input_name>`)
 - `--preview`: Show real-time preview during processing
 - `--no-audio`: Don't preserve audio from source video
+
+## Available Filters
+
+### 1. Sobel Edge Detection
+PyTorch-based edge detection using Sobel operators with Gaussian blur preprocessing.
+
+**Use cases:** Line art, artistic effects, feature extraction
+
+### 2. Cartoon Filter
+Combines bilateral filtering, edge detection, and color quantization for a comic book appearance.
+
+**Use cases:** Stylized content, artistic videos, comic-style streams
+
+### 3. Thermal Vision
+Converts to grayscale and applies color mapping to simulate thermal/night vision cameras.
+
+**Use cases:** Atmospheric effects, surveillance aesthetic, gaming overlays
+
+### 4. Pixelation
+Retro-style pixelation with optional smoothing.
+
+**Use cases:** Retro gaming aesthetic, privacy blurring, artistic effects
 
 ## Project Structure
 
@@ -114,44 +157,44 @@ realtime_camera_filter/
 
 ## How It Works
 
-### Sobel Edge Detection
-
-The pipeline uses Sobel operators to detect edges in images:
-
-1. **Gaussian Blur** (optional): Reduces noise and smooths the image
-2. **Sobel Kernels**: Convolutional kernels detect horizontal and vertical gradients
-3. **Gradient Magnitude**: Combines X and Y gradients: `sqrt(Gx² + Gy²)`
-4. **Thresholding**: Filters out weak edges below the threshold
-
 ### Architecture
 
 The modular design separates concerns:
 
-- **`SobelEdgeFilter`**: PyTorch-based edge detection filter
-- **`VideoSource`**: Abstract base for video sources
-  - **`VideoFileSource`**: Reads MP4/video files
-  - **`WebcamSource`**: Captures from webcam
-- **`VideoPipeline`**: Processes frames through filters
-  - `process_to_file()`: For video files (preserves audio)
+- **Filter Classes**: Each filter implements an `apply(frame) -> frame` method
+  - `SobelEdgeFilter`: PyTorch-based edge detection
+  - `CartoonFilter`: Bilateral filter + edge detection + color quantization
+  - `ThermalVisionFilter`: Grayscale conversion + color mapping
+  - `PixelationFilter`: Downscale + upscale with interpolation
+
+- **Video Sources**: Abstract interface for frame capture
+  - `VideoFileSource`: Reads MP4/video files
+  - `WebcamSource`: Captures from webcam
+
+- **VideoPipeline**: Orchestrates frame processing
+  - `process_to_file()`: For video files (preserves audio via ffmpeg)
   - `process_realtime()`: For live webcam streams
 
 ### Adding Custom Filters
 
-To create your own filter:
+Create your own filter by implementing the `apply()` method:
 
-1. Create a new filter class following the `SobelEdgeFilter` pattern
-2. Implement an `apply(frame: np.ndarray) -> np.ndarray` method
-3. Pass your filter to `VideoPipeline` instead of `SobelEdgeFilter`
-
-Example:
 ```python
 class MyCustomFilter:
+    def __init__(self, param1=default1, param2=default2):
+        self.param1 = param1
+        self.param2 = param2
+
     def apply(self, frame: np.ndarray) -> np.ndarray:
         # Your processing logic here
-        return processed_frame
+        # frame is (H, W, C) BGR format
+        processed = your_processing(frame)
+        return processed
 
 # Use it
-filter_obj = MyCustomFilter()
+from pipeline import WebcamSource, VideoPipeline
+
+filter_obj = MyCustomFilter(param1=value1)
 source = WebcamSource(0)
 pipeline = VideoPipeline(source, filter_obj)
 pipeline.process_realtime()
@@ -159,23 +202,10 @@ pipeline.process_realtime()
 
 ## Performance
 
-- **GPU Acceleration**: Automatically uses CUDA if available
+- **GPU Acceleration**: Sobel filter automatically uses CUDA if available
 - **Real-time Processing**: Optimized for 30+ FPS on modern hardware
 - **Memory Efficient**: Processes frames individually, no full video loading
-
-## Tuning Parameters
-
-### For More Edges (More Forgiving)
-- **Lower threshold**: `--threshold 0.01` to `0.03`
-- **Higher blur**: `--blur 7` to `11`
-
-### For Fewer Edges (More Selective)
-- **Higher threshold**: `--threshold 0.1` to `0.2`
-- **Lower blur**: `--blur 3` to `5`
-
-### For Noisy Input (Webcams, Low Quality)
-- **Increase blur**: `--blur 9` to `13`
-- **Adjust threshold**: Experiment with `0.03` to `0.08`
+- **Filter Speed**: Thermal and Pixelation are fastest; Cartoon is slowest (bilateral filter)
 
 ## Requirements
 
@@ -190,15 +220,31 @@ pipeline.process_realtime()
 ### Webcam with DroidCam
 Works seamlessly with virtual camera apps like DroidCam:
 ```bash
-python webcam.py 0 --threshold 0.03 --blur 7
+python webcam.py 0 --filter thermal --colormap inferno
 ```
 
 ### Batch Processing
-Process multiple videos:
+Process multiple videos with the same filter:
 ```bash
 for video in input/*.mp4; do
-    python process_input.py "$video" --threshold 0.05
+    python process_input.py "$video" --filter cartoon --color-levels 6
 done
+```
+
+### Chain Filters (Advanced)
+Create a custom filter that combines multiple effects:
+```python
+from pipeline import SobelEdgeFilter, PixelationFilter
+
+class ChainedFilter:
+    def __init__(self):
+        self.pixelate = PixelationFilter(pixel_size=8)
+        self.edges = SobelEdgeFilter(threshold=0.1)
+
+    def apply(self, frame):
+        frame = self.pixelate.apply(frame)
+        frame = self.edges.apply(frame)
+        return frame
 ```
 
 ## License
@@ -208,9 +254,9 @@ MIT License - feel free to use and modify as needed.
 ## Contributing
 
 Contributions welcome! Feel free to:
-- Add new filters
+- Add new filters (style transfer, depth estimation, etc.)
 - Improve performance
-- Add features (e.g., output to virtual camera, different edge detection algorithms)
+- Add features (output to virtual camera, filter combinations)
 - Fix bugs
 
 ## Troubleshooting
@@ -225,12 +271,17 @@ Contributions welcome! Feel free to:
 
 **Q: Slow performance?**
 - Check if CUDA is available: `python -c "import torch; print(torch.cuda.is_available())"`
-- Reduce blur kernel size
-- Lower input resolution (modify source before processing)
+- Try faster filters (thermal, pixel) instead of cartoon
+- Reduce resolution or blur kernel sizes
 
-**Q: Too many/few edges?**
-- Adjust `--threshold`: Lower for more edges, higher for fewer
-- Adjust `--blur`: Higher for smoother/more forgiving detection
+**Q: Cartoon filter too slow?**
+- Reduce `--blur-d` parameter
+- Reduce `--color-levels` for faster quantization
+- The bilateral filter is computationally expensive
+
+**Q: Want different thermal colors?**
+- Try different colormaps: `--colormap hot`, `--colormap inferno`, `--colormap cool`
+- Adjust contrast and brightness for better visibility
 
 ## Acknowledgments
 

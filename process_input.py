@@ -1,27 +1,54 @@
 #!/usr/bin/env python3
 """
-Process video files with Sobel edge detection.
+Process video files with various filters.
 
 Usage:
-    python process_input.py INPUT_VIDEO [OUTPUT_VIDEO] [--threshold THRESHOLD] [--blur BLUR] [--preview]
+    python process_input.py INPUT_VIDEO [OUTPUT_VIDEO] --filter FILTER [filter-specific options]
 
 Examples:
-    python process_input.py input/video.mp4                              # Auto output name
-    python process_input.py input/video.mp4 output/edges.mp4             # Custom output
-    python process_input.py input/video.mp4 --threshold 0.05 --blur 5    # Custom settings
-    python process_input.py input/video.mp4 --preview                    # Show preview while processing
+    python process_input.py input/video.mp4 --filter sobel --threshold 0.03
+    python process_input.py input/video.mp4 --filter cartoon --color-levels 6
+    python process_input.py input/video.mp4 --filter thermal --colormap hot
+    python process_input.py input/video.mp4 --filter pixel --pixel-size 32
 """
 
 import sys
 import argparse
+import cv2
 from pathlib import Path
-from pipeline import SobelEdgeFilter, VideoFileSource, VideoPipeline
+from pipeline import (
+    SobelEdgeFilter, CartoonFilter, ThermalVisionFilter, PixelationFilter,
+    VideoFileSource, VideoPipeline
+)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Process video files with Sobel edge detection'
+        description='Process video files with various filters',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Filter-specific parameters:
+
+  sobel:
+    --threshold FLOAT     Edge threshold (0.0-1.0). Lower = more edges (default: 0.03)
+    --blur INT            Gaussian blur size (odd number). Higher = smoother (default: 7)
+
+  cartoon:
+    --edge-threshold FLOAT   Edge sensitivity (0.0-1.0). Lower = more edges (default: 0.2)
+    --color-levels INT       Color quantization levels (4-16). Lower = more cartoony (default: 8)
+    --blur-d INT             Bilateral filter diameter (5-15). Higher = smoother (default: 9)
+
+  thermal:
+    --colormap STR          Color scheme: jet, hot, inferno, cool, bone (default: jet)
+    --brightness FLOAT      Brightness (0.5-2.0). Higher = brighter (default: 1.0)
+    --contrast FLOAT        Contrast (0.5-3.0). Higher = more contrast (default: 1.5)
+
+  pixel:
+    --pixel-size INT        Block size (4-64). Higher = more pixelated (default: 16)
+    --smooth                Use smooth pixel edges instead of hard edges
+        """
     )
+
     parser.add_argument(
         'input_video',
         type=str,
@@ -31,20 +58,36 @@ def main():
         'output_video',
         type=str,
         nargs='?',
-        help='Path to output video file (default: output/edge_<input_name>)'
+        help='Path to output video file (default: output/<filter>_<input_name>)'
     )
     parser.add_argument(
-        '--threshold',
-        type=float,
-        default=0.03,
-        help='Edge detection threshold (0.0-1.0). Lower = more forgiving/more edges (default: 0.03)'
+        '--filter',
+        type=str,
+        choices=['sobel', 'cartoon', 'thermal', 'pixel'],
+        default='sobel',
+        help='Filter to apply (default: sobel)'
     )
-    parser.add_argument(
-        '--blur',
-        type=int,
-        default=7,
-        help='Gaussian blur kernel size (odd number). Higher = smoother edges (default: 7)'
-    )
+
+    # Sobel filter parameters
+    parser.add_argument('--threshold', type=float, default=0.03)
+    parser.add_argument('--blur', type=int, default=7)
+
+    # Cartoon filter parameters
+    parser.add_argument('--edge-threshold', type=float, default=0.2)
+    parser.add_argument('--color-levels', type=int, default=8)
+    parser.add_argument('--blur-d', type=int, default=9)
+
+    # Thermal filter parameters
+    parser.add_argument('--colormap', type=str, default='jet',
+                        choices=['jet', 'hot', 'inferno', 'cool', 'bone', 'viridis'])
+    parser.add_argument('--brightness', type=float, default=1.0)
+    parser.add_argument('--contrast', type=float, default=1.5)
+
+    # Pixelation filter parameters
+    parser.add_argument('--pixel-size', type=int, default=16)
+    parser.add_argument('--smooth', action='store_true')
+
+    # General options
     parser.add_argument(
         '--preview',
         action='store_true',
@@ -67,24 +110,64 @@ def main():
     if args.output_video:
         output_path = Path(args.output_video)
     else:
-        output_path = Path("output") / f"edge_{input_path.name}"
+        output_path = Path("output") / f"{args.filter}_{input_path.name}"
 
-    # Validate blur is odd
-    if args.blur % 2 == 0:
-        print(f"Warning: blur must be odd, using {args.blur + 1} instead")
-        args.blur += 1
+    # Create the appropriate filter
+    if args.filter == 'sobel':
+        # Validate blur is odd
+        if args.blur % 2 == 0:
+            args.blur += 1
+        filter_obj = SobelEdgeFilter(threshold=args.threshold, blur_kernel_size=args.blur)
+        print(f"Filter: Sobel Edge Detection")
+        print(f"  Threshold: {args.threshold}")
+        print(f"  Blur: {args.blur}")
 
-    print(f"Processing video with:")
-    print(f"  Input: {input_path}")
-    print(f"  Output: {output_path}")
-    print(f"  Threshold: {args.threshold} (lower = more edges)")
-    print(f"  Blur: {args.blur} (higher = smoother)")
-    print(f"  Preview: {args.preview}")
-    print(f"  Preserve audio: {not args.no_audio}")
-    print()
+    elif args.filter == 'cartoon':
+        filter_obj = CartoonFilter(
+            edge_threshold=args.edge_threshold,
+            color_levels=args.color_levels,
+            blur_d=args.blur_d
+        )
+        print(f"Filter: Cartoon")
+        print(f"  Edge threshold: {args.edge_threshold}")
+        print(f"  Color levels: {args.color_levels}")
+        print(f"  Blur diameter: {args.blur_d}")
 
-    # Initialize filter and source
-    filter_obj = SobelEdgeFilter(threshold=args.threshold, blur_kernel_size=args.blur)
+    elif args.filter == 'thermal':
+        # Map colormap name to cv2 constant
+        colormap_dict = {
+            'jet': cv2.COLORMAP_JET,
+            'hot': cv2.COLORMAP_HOT,
+            'inferno': cv2.COLORMAP_INFERNO,
+            'cool': cv2.COLORMAP_COOL,
+            'bone': cv2.COLORMAP_BONE,
+            'viridis': cv2.COLORMAP_VIRIDIS
+        }
+        filter_obj = ThermalVisionFilter(
+            colormap=colormap_dict[args.colormap],
+            brightness=args.brightness,
+            contrast=args.contrast
+        )
+        print(f"Filter: Thermal Vision")
+        print(f"  Colormap: {args.colormap}")
+        print(f"  Brightness: {args.brightness}")
+        print(f"  Contrast: {args.contrast}")
+
+    elif args.filter == 'pixel':
+        filter_obj = PixelationFilter(
+            pixel_size=args.pixel_size,
+            smooth=args.smooth
+        )
+        print(f"Filter: Pixelation")
+        print(f"  Pixel size: {args.pixel_size}")
+        print(f"  Smooth: {args.smooth}")
+
+    print(f"\nInput: {input_path}")
+    print(f"Output: {output_path}")
+    print(f"Preview: {args.preview}")
+    print(f"Preserve audio: {not args.no_audio}\n")
+
+    # Initialize source
     source = VideoFileSource(input_path)
 
     # Create and run pipeline

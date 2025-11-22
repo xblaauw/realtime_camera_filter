@@ -91,6 +91,139 @@ class SobelEdgeFilter:
         return edge_frame
 
 
+class CartoonFilter:
+    """Cartoon/comic book filter using bilateral filtering and edge detection."""
+
+    def __init__(self, edge_threshold: float = 0.2, color_levels: int = 8, blur_d: int = 9):
+        """
+        Initialize cartoon filter.
+
+        Args:
+            edge_threshold: Edge detection sensitivity (0.0-1.0). Lower = more edges
+            color_levels: Number of color levels for quantization (4-16). Lower = more cartoony
+            blur_d: Bilateral filter diameter (odd number, 5-15). Higher = smoother colors
+        """
+        self.edge_threshold = edge_threshold
+        self.color_levels = color_levels
+        self.blur_d = blur_d
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Apply cartoon filter to a frame.
+
+        Args:
+            frame: Input frame as numpy array (H, W, C) in BGR format
+
+        Returns:
+            Cartoonified frame as numpy array (H, W, C) in BGR format
+        """
+        # Step 1: Edge detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.medianBlur(gray, 5)
+        edges = cv2.adaptiveThreshold(
+            gray, 255,
+            cv2.ADAPTIVE_THRESH_MEAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=9,
+            C=int(self.edge_threshold * 10)
+        )
+
+        # Step 2: Bilateral filter for color smoothing while preserving edges
+        color = cv2.bilateralFilter(frame, self.blur_d, sigmaColor=300, sigmaSpace=300)
+
+        # Step 3: Color quantization
+        # Reduce to fewer colors for cartoon effect
+        color = color // (256 // self.color_levels) * (256 // self.color_levels)
+
+        # Step 4: Combine edges with colored image
+        edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        cartoon = cv2.bitwise_and(color, edges_colored)
+
+        return cartoon
+
+
+class ThermalVisionFilter:
+    """Thermal/night vision filter with color mapping."""
+
+    def __init__(self, colormap: int = cv2.COLORMAP_JET, brightness: float = 1.0, contrast: float = 1.5):
+        """
+        Initialize thermal vision filter.
+
+        Args:
+            colormap: OpenCV colormap (COLORMAP_JET, COLORMAP_HOT, COLORMAP_INFERNO, etc.)
+            brightness: Brightness adjustment (0.5-2.0). Higher = brighter
+            contrast: Contrast adjustment (0.5-3.0). Higher = more contrast
+        """
+        self.colormap = colormap
+        self.brightness = brightness
+        self.contrast = contrast
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Apply thermal vision filter to a frame.
+
+        Args:
+            frame: Input frame as numpy array (H, W, C) in BGR format
+
+        Returns:
+            Thermal-style frame as numpy array (H, W, C) in BGR format
+        """
+        # Convert to grayscale to simulate thermal intensity
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Apply brightness and contrast adjustments
+        gray = cv2.convertScaleAbs(gray, alpha=self.contrast, beta=(self.brightness - 1.0) * 50)
+
+        # Apply colormap for thermal effect
+        thermal = cv2.applyColorMap(gray, self.colormap)
+
+        return thermal
+
+
+class PixelationFilter:
+    """Pixelation/retro filter."""
+
+    def __init__(self, pixel_size: int = 16, smooth: bool = False):
+        """
+        Initialize pixelation filter.
+
+        Args:
+            pixel_size: Size of each pixel block (4-64). Higher = more pixelated
+            smooth: Whether to smooth the pixelated output (creates softer blocks)
+        """
+        self.pixel_size = pixel_size
+        self.smooth = smooth
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Apply pixelation filter to a frame.
+
+        Args:
+            frame: Input frame as numpy array (H, W, C) in BGR format
+
+        Returns:
+            Pixelated frame as numpy array (H, W, C) in BGR format
+        """
+        height, width = frame.shape[:2]
+
+        # Downscale to create pixelation
+        small_width = max(1, width // self.pixel_size)
+        small_height = max(1, height // self.pixel_size)
+
+        # Resize down
+        temp = cv2.resize(frame, (small_width, small_height), interpolation=cv2.INTER_LINEAR)
+
+        # Resize back up
+        if self.smooth:
+            # Use linear interpolation for smoother pixels
+            pixelated = cv2.resize(temp, (width, height), interpolation=cv2.INTER_LINEAR)
+        else:
+            # Use nearest neighbor for hard pixel edges
+            pixelated = cv2.resize(temp, (width, height), interpolation=cv2.INTER_NEAREST)
+
+        return pixelated
+
+
 class VideoSource:
     """Abstract base for video sources."""
 
