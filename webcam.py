@@ -3,48 +3,26 @@
 Real-time webcam processing with various filters.
 
 Usage:
-    python webcam.py [camera_id] --filter FILTER [filter-specific options]
+    python webcam.py [camera_id] --filter FILTER [filter-options]
 
 Examples:
-    python webcam.py --filter sobel --threshold 0.03 --blur 7
-    python webcam.py --filter cartoon --edge-threshold 0.2 --color-levels 8
-    python webcam.py --filter thermal --colormap jet --contrast 1.5
-    python webcam.py --filter pixel --pixel-size 16 --smooth
+    python webcam.py --filter sobel --threshold 0.03
+    python webcam.py --filter cartoon --color-levels 6
+    python webcam.py --filter thermal --colormap hot
+    python webcam.py --filter pixel --pixel-size 16
 """
 
 import argparse
-import cv2
-from pipeline import (
-    SobelEdgeFilter, CartoonFilter, ThermalVisionFilter, PixelationFilter,
-    WebcamSource, VideoPipeline
-)
+from sources import WebcamSource
+from pipeline import VideoPipeline
+from filters import list_filters, get_filter_info, create_filter
 
 
-def main():
+def build_parser():
+    """Build argument parser with dynamically generated filter arguments."""
     parser = argparse.ArgumentParser(
         description='Real-time webcam processing with various filters',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Filter-specific parameters:
-
-  sobel:
-    --threshold FLOAT     Edge threshold (0.0-1.0). Lower = more edges (default: 0.03)
-    --blur INT            Gaussian blur size (odd number). Higher = smoother (default: 7)
-
-  cartoon:
-    --edge-threshold FLOAT   Edge sensitivity (0.0-1.0). Lower = more edges (default: 0.2)
-    --color-levels INT       Color quantization levels (4-16). Lower = more cartoony (default: 8)
-    --blur-d INT             Bilateral filter diameter (5-15). Higher = smoother (default: 9)
-
-  thermal:
-    --colormap STR          Color scheme: jet, hot, inferno, cool, bone (default: jet)
-    --brightness FLOAT      Brightness (0.5-2.0). Higher = brighter (default: 1.0)
-    --contrast FLOAT        Contrast (0.5-3.0). Higher = more contrast (default: 1.5)
-
-  pixel:
-    --pixel-size INT        Block size (4-64). Higher = more pixelated (default: 16)
-    --smooth                Use smooth pixel edges instead of hard edges
-        """
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     parser.add_argument(
@@ -54,92 +32,71 @@ Filter-specific parameters:
         default=0,
         help='Webcam device ID (default: 0)'
     )
+
     parser.add_argument(
         '--filter',
         type=str,
-        choices=['sobel', 'cartoon', 'thermal', 'pixel'],
+        choices=list_filters(),
         default='sobel',
         help='Filter to apply (default: sobel)'
     )
 
-    # Sobel filter parameters
-    parser.add_argument('--threshold', type=float, default=0.03)
-    parser.add_argument('--blur', type=int, default=7)
+    # Add arguments for all filters
+    for filter_name in list_filters():
+        filter_info = get_filter_info(filter_name)
+        params = filter_info['parameters']
 
-    # Cartoon filter parameters
-    parser.add_argument('--edge-threshold', type=float, default=0.2)
-    parser.add_argument('--color-levels', type=int, default=8)
-    parser.add_argument('--blur-d', type=int, default=9)
+        for param_name, param_info in params.items():
+            arg_name = f'--{param_name}'
+            arg_kwargs = {
+                'help': param_info.get('help', ''),
+                'default': param_info.get('default')
+            }
 
-    # Thermal filter parameters
-    parser.add_argument('--colormap', type=str, default='jet',
-                        choices=['jet', 'hot', 'inferno', 'cool', 'bone', 'viridis'])
-    parser.add_argument('--brightness', type=float, default=1.0)
-    parser.add_argument('--contrast', type=float, default=1.5)
+            param_type = param_info.get('type')
 
-    # Pixelation filter parameters
-    parser.add_argument('--pixel-size', type=int, default=16)
-    parser.add_argument('--smooth', action='store_true')
+            if param_type == bool:
+                arg_kwargs['action'] = 'store_true'
+                arg_kwargs.pop('default', None)
+            else:
+                arg_kwargs['type'] = param_type
 
+            if 'choices' in param_info:
+                arg_kwargs['choices'] = param_info['choices']
+
+            parser.add_argument(arg_name, **arg_kwargs)
+
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
-    # Create the appropriate filter
-    if args.filter == 'sobel':
-        # Validate blur is odd
-        if args.blur % 2 == 0:
-            args.blur += 1
-        filter_obj = SobelEdgeFilter(threshold=args.threshold, blur_kernel_size=args.blur)
-        print(f"Sobel Edge Detection:")
-        print(f"  Threshold: {args.threshold}")
-        print(f"  Blur: {args.blur}")
+    # Get filter info
+    filter_info = get_filter_info(args.filter)
+    params = filter_info['parameters']
 
-    elif args.filter == 'cartoon':
-        filter_obj = CartoonFilter(
-            edge_threshold=args.edge_threshold,
-            color_levels=args.color_levels,
-            blur_d=args.blur_d
-        )
-        print(f"Cartoon Filter:")
-        print(f"  Edge threshold: {args.edge_threshold}")
-        print(f"  Color levels: {args.color_levels}")
-        print(f"  Blur diameter: {args.blur_d}")
+    # Build filter kwargs from parsed args
+    filter_kwargs = {}
+    for param_name in params.keys():
+        arg_value = getattr(args, param_name.replace('-', '_'), None)
+        if arg_value is not None:
+            filter_kwargs[param_name.replace('-', '_')] = arg_value
 
-    elif args.filter == 'thermal':
-        # Map colormap name to cv2 constant
-        colormap_dict = {
-            'jet': cv2.COLORMAP_JET,
-            'hot': cv2.COLORMAP_HOT,
-            'inferno': cv2.COLORMAP_INFERNO,
-            'cool': cv2.COLORMAP_COOL,
-            'bone': cv2.COLORMAP_BONE,
-            'viridis': cv2.COLORMAP_VIRIDIS
-        }
-        filter_obj = ThermalVisionFilter(
-            colormap=colormap_dict[args.colormap],
-            brightness=args.brightness,
-            contrast=args.contrast
-        )
-        print(f"Thermal Vision:")
-        print(f"  Colormap: {args.colormap}")
-        print(f"  Brightness: {args.brightness}")
-        print(f"  Contrast: {args.contrast}")
+    # Create filter
+    filter_obj = create_filter(args.filter, **filter_kwargs)
 
-    elif args.filter == 'pixel':
-        filter_obj = PixelationFilter(
-            pixel_size=args.pixel_size,
-            smooth=args.smooth
-        )
-        print(f"Pixelation:")
-        print(f"  Pixel size: {args.pixel_size}")
-        print(f"  Smooth: {args.smooth}")
+    # Print filter info
+    print(f"Filter: {filter_info['description']}")
+    for param_name, value in filter_kwargs.items():
+        print(f"  {param_name}: {value}")
 
     print(f"\nStarting webcam {args.camera_id}")
     print(f"Press 'q' to quit\n")
 
-    # Initialize source
+    # Initialize source and run pipeline
     source = WebcamSource(args.camera_id)
-
-    # Create and run pipeline
     pipeline = VideoPipeline(source, filter_obj)
     pipeline.process_realtime()
 

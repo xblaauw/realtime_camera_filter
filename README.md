@@ -42,23 +42,23 @@ uv sync
 Process your webcam feed in real-time with various filters:
 
 ```bash
-python webcam.py [camera_id] --filter FILTER [filter-options]
+uv run webcam.py [camera_id] --filter FILTER [filter-options]
 ```
 
 **Filter Options:**
 
 **Sobel Edge Detection** (default):
 ```bash
-python webcam.py --filter sobel
-python webcam.py --filter sobel --threshold 0.03 --blur 7
+uv run webcam.py --filter sobel
+uv run webcam.py --filter sobel --threshold 0.03 --blur 7
 ```
 - `--threshold` (0.0-1.0): Lower = more edges (default: 0.03)
 - `--blur` (odd int): Higher = smoother edges (default: 7)
 
 **Cartoon/Comic Effect**:
 ```bash
-python webcam.py --filter cartoon
-python webcam.py --filter cartoon --color-levels 6 --edge-threshold 0.15
+uv run webcam.py --filter cartoon
+uv run webcam.py --filter cartoon --color-levels 6 --edge-threshold 0.15
 ```
 - `--edge-threshold` (0.0-1.0): Lower = more edges (default: 0.2)
 - `--color-levels` (4-16): Lower = more cartoony (default: 8)
@@ -66,8 +66,8 @@ python webcam.py --filter cartoon --color-levels 6 --edge-threshold 0.15
 
 **Thermal Vision**:
 ```bash
-python webcam.py --filter thermal
-python webcam.py --filter thermal --colormap hot --contrast 2.0
+uv run webcam.py --filter thermal
+uv run webcam.py --filter thermal --colormap hot --contrast 2.0
 ```
 - `--colormap`: jet, hot, inferno, cool, bone, viridis (default: jet)
 - `--brightness` (0.5-2.0): Higher = brighter (default: 1.0)
@@ -75,8 +75,8 @@ python webcam.py --filter thermal --colormap hot --contrast 2.0
 
 **Pixelation**:
 ```bash
-python webcam.py --filter pixel
-python webcam.py --filter pixel --pixel-size 32 --smooth
+uv run webcam.py --filter pixel
+uv run webcam.py --filter pixel --pixel-size 32 --smooth
 ```
 - `--pixel-size` (4-64): Higher = more pixelated (default: 16)
 - `--smooth`: Smooth pixel edges instead of hard edges
@@ -89,28 +89,28 @@ python webcam.py --filter pixel --pixel-size 32 --smooth
 Process video files while preserving audio:
 
 ```bash
-python process_input.py INPUT_VIDEO [OUTPUT_VIDEO] --filter FILTER [filter-options]
+uv run process_input.py INPUT_VIDEO [OUTPUT_VIDEO] --filter FILTER [filter-options]
 ```
 
 **Examples:**
 ```bash
 # Sobel edge detection
-python process_input.py input/video.mp4 --filter sobel --threshold 0.05
+uv run process_input.py input/video.mp4 --filter sobel --threshold 0.05
 
 # Cartoon effect
-python process_input.py input/video.mp4 --filter cartoon --color-levels 6
+uv run process_input.py input/video.mp4 --filter cartoon --color-levels 6
 
 # Thermal vision with hot colormap
-python process_input.py input/video.mp4 --filter thermal --colormap hot
+uv run process_input.py input/video.mp4 --filter thermal --colormap hot
 
 # Pixelation with smooth edges
-python process_input.py input/video.mp4 --filter pixel --pixel-size 24 --smooth
+uv run process_input.py input/video.mp4 --filter pixel --pixel-size 24 --smooth
 
 # Show preview while processing
-python process_input.py input/video.mp4 --filter cartoon --preview
+uv run process_input.py input/video.mp4 --filter cartoon --preview
 
 # Process without preserving audio
-python process_input.py input/video.mp4 --filter sobel --no-audio
+uv run process_input.py input/video.mp4 --filter sobel --no-audio
 ```
 
 **General Parameters:**
@@ -145,9 +145,18 @@ Retro-style pixelation with optional smoothing.
 
 ```
 realtime_camera_filter/
-├── pipeline.py           # Core pipeline and filter classes
-├── webcam.py             # Webcam processing script
-├── process_input.py      # Video file processing script
+├── filters/              # Filter modules (auto-discovered)
+│   ├── __init__.py       # Filter registry
+│   ├── base.py           # BaseFilter class
+│   ├── sobel.py          # SobelEdgeFilter
+│   ├── cartoon.py        # CartoonFilter
+│   ├── thermal.py        # ThermalVisionFilter
+│   └── pixelation.py     # PixelationFilter
+├── sources/              # Video source modules
+│   └── __init__.py       # VideoSource, VideoFileSource, WebcamSource
+├── pipeline.py           # VideoPipeline orchestration
+├── webcam.py             # Webcam processing CLI (auto-discovers filters)
+├── process_input.py      # Video file processing CLI (auto-discovers filters)
 ├── main.py               # Legacy main script (can be used as reference)
 ├── input/                # Place input videos here
 ├── output/               # Processed videos saved here
@@ -159,46 +168,102 @@ realtime_camera_filter/
 
 ### Architecture
 
-The modular design separates concerns:
+The modular design uses a **filter registry pattern** for easy extensibility:
 
-- **Filter Classes**: Each filter implements an `apply(frame) -> frame` method
+- **Filter Registry** (`filters/__init__.py`): Auto-discovers and manages all filters
+  - `list_filters()`: Get available filter names
+  - `get_filter_info()`: Get filter metadata and parameters
+  - `create_filter()`: Instantiate a filter with parameters
+
+- **Filter Classes** (`filters/`): Each filter inherits from `BaseFilter`
   - `SobelEdgeFilter`: PyTorch-based edge detection
   - `CartoonFilter`: Bilateral filter + edge detection + color quantization
   - `ThermalVisionFilter`: Grayscale conversion + color mapping
   - `PixelationFilter`: Downscale + upscale with interpolation
+  - Filters are **self-describing** - define their own parameters via `get_parameters()`
 
-- **Video Sources**: Abstract interface for frame capture
+- **Video Sources** (`sources/`): Abstract interface for frame capture
   - `VideoFileSource`: Reads MP4/video files
   - `WebcamSource`: Captures from webcam
 
-- **VideoPipeline**: Orchestrates frame processing
+- **VideoPipeline** (`pipeline.py`): Orchestrates frame processing
   - `process_to_file()`: For video files (preserves audio via ffmpeg)
   - `process_realtime()`: For live webcam streams
 
+### Why This Architecture?
+
+This design makes adding new filters **trivial**:
+1. CLI arguments are auto-generated from filter metadata
+2. No need to update `webcam.py` or `process_input.py`
+3. Filters are discovered automatically
+4. Scales easily to 10+ filters without code clutter
+
 ### Adding Custom Filters
 
-Create your own filter by implementing the `apply()` method:
+Adding a new filter is a 3-step process:
+
+**Step 1:** Create your filter file in `filters/`:
 
 ```python
-class MyCustomFilter:
-    def __init__(self, param1=default1, param2=default2):
+# filters/myfilter.py
+import cv2
+import numpy as np
+from .base import BaseFilter
+
+class MyCustomFilter(BaseFilter):
+    name = "myfilter"
+    description = "My amazing custom filter"
+
+    def __init__(self, param1: int = 10, param2: float = 0.5):
+        super().__init__()
         self.param1 = param1
         self.param2 = param2
 
+    @classmethod
+    def get_parameters(cls):
+        return {
+            'param1': {
+                'type': int,
+                'default': 10,
+                'help': 'First parameter (1-100)',
+                'range': (1, 100)
+            },
+            'param2': {
+                'type': float,
+                'default': 0.5,
+                'help': 'Second parameter (0.0-1.0)',
+                'range': (0.0, 1.0)
+            }
+        }
+
     def apply(self, frame: np.ndarray) -> np.ndarray:
-        # Your processing logic here
-        # frame is (H, W, C) BGR format
-        processed = your_processing(frame)
+        # Your filter logic here
+        # frame is (H, W, C) in BGR format
+        processed = your_processing(frame, self.param1, self.param2)
         return processed
-
-# Use it
-from pipeline import WebcamSource, VideoPipeline
-
-filter_obj = MyCustomFilter(param1=value1)
-source = WebcamSource(0)
-pipeline = VideoPipeline(source, filter_obj)
-pipeline.process_realtime()
 ```
+
+**Step 2:** Register it in `filters/__init__.py`:
+
+```python
+from .myfilter import MyCustomFilter
+
+FILTERS = {
+    'sobel': SobelEdgeFilter,
+    'cartoon': CartoonFilter,
+    'thermal': ThermalVisionFilter,
+    'pixel': PixelationFilter,
+    'myfilter': MyCustomFilter,  # Add this line
+}
+```
+
+**Step 3:** That's it! The CLI automatically discovers it:
+
+```bash
+uv run webcam.py --filter myfilter --param1 20 --param2 0.8
+```
+
+No need to modify `webcam.py` or `process_input.py` - they auto-generate arguments!
 
 ## Performance
 
@@ -220,14 +285,14 @@ pipeline.process_realtime()
 ### Webcam with DroidCam
 Works seamlessly with virtual camera apps like DroidCam:
 ```bash
-python webcam.py 0 --filter thermal --colormap inferno
+uv run webcam.py 0 --filter thermal --colormap inferno
 ```
 
 ### Batch Processing
 Process multiple videos with the same filter:
 ```bash
 for video in input/*.mp4; do
-    python process_input.py "$video" --filter cartoon --color-levels 6
+    uv run process_input.py "$video" --filter cartoon --color-levels 6
 done
 ```
 
