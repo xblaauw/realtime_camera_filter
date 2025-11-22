@@ -12,7 +12,7 @@ A modular video processing pipeline with multiple real-time filters for video fi
 - **Video file processing** with audio preservation
 - **GPU acceleration** via PyTorch (CUDA support)
 - **Adjustable parameters** for fine-tuning each filter
-- **Modular architecture** - easy to extend with custom filters
+- **Modular architecture** with filter registry pattern
 - Command-line interface for both webcam and video processing
 
 ## Installation
@@ -168,7 +168,7 @@ realtime_camera_filter/
 
 ### Architecture
 
-The modular design uses a **filter registry pattern** for easy extensibility:
+The modular design uses a **filter registry pattern**:
 
 - **Filter Registry** (`filters/__init__.py`): Auto-discovers and manages all filters
   - `list_filters()`: Get available filter names
@@ -180,7 +180,7 @@ The modular design uses a **filter registry pattern** for easy extensibility:
   - `CartoonFilter`: Bilateral filter + edge detection + color quantization
   - `ThermalVisionFilter`: Grayscale conversion + color mapping
   - `PixelationFilter`: Downscale + upscale with interpolation
-  - Filters are **self-describing** - define their own parameters via `get_parameters()`
+  - Filters define their own parameters via `get_parameters()`
 
 - **Video Sources** (`sources/`): Abstract interface for frame capture
   - `VideoFileSource`: Reads MP4/video files
@@ -190,17 +190,15 @@ The modular design uses a **filter registry pattern** for easy extensibility:
   - `process_to_file()`: For video files (preserves audio via ffmpeg)
   - `process_realtime()`: For live webcam streams
 
-### Why This Architecture?
+### Design Notes
 
-This design makes adding new filters **trivial**:
-1. CLI arguments are auto-generated from filter metadata
-2. No need to update `webcam.py` or `process_input.py`
-3. Filters are discovered automatically
-4. Scales easily to 10+ filters without code clutter
+- CLI arguments are generated from filter metadata
+- Filters are discovered via the registry
+- Adding filters doesn't require changes to `webcam.py` or `process_input.py`
 
 ### Adding Custom Filters
 
-Adding a new filter is a 3-step process:
+Adding a new filter:
 
 **Step 1:** Create your filter file in `filters/`:
 
@@ -257,13 +255,13 @@ FILTERS = {
 }
 ```
 
-**Step 3:** That's it! The CLI automatically discovers it:
+**Step 3:** Use the filter:
 
 ```bash
 uv run webcam.py --filter myfilter --param1 20 --param2 0.8
 ```
 
-No need to modify `webcam.py` or `process_input.py` - they auto-generate arguments!
+The CLI scripts generate arguments from the filter's `get_parameters()` method.
 
 ## Performance
 
@@ -283,7 +281,7 @@ No need to modify `webcam.py` or `process_input.py` - they auto-generate argumen
 ## Examples
 
 ### Webcam with DroidCam
-Works seamlessly with virtual camera apps like DroidCam:
+Using virtual camera apps like DroidCam:
 ```bash
 uv run webcam.py 0 --filter thermal --colormap inferno
 ```
@@ -318,7 +316,7 @@ MIT License - feel free to use and modify as needed.
 
 ## Contributing
 
-Contributions welcome! Feel free to:
+Contributions accepted:
 - Add new filters (style transfer, depth estimation, etc.)
 - Improve performance
 - Add features (output to virtual camera, filter combinations)
