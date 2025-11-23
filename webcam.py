@@ -41,6 +41,12 @@ def build_parser():
         help='Filter to apply (default: sobel)'
     )
 
+    parser.add_argument(
+        '--virtual-cam',
+        type=str,
+        help='Output to virtual camera device (e.g., /dev/video2)'
+    )
+
     # Add arguments for all filters
     for filter_name in list_filters():
         filter_info = get_filter_info(filter_name)
@@ -98,7 +104,7 @@ def main():
     # Initialize source and run pipeline
     source = WebcamSource(args.camera_id)
     pipeline = VideoPipeline(source, filter_obj)
-    pipeline.process_realtime()
+    pipeline.process_realtime(virtual_cam_device=args.virtual_cam)
 
 
 if __name__ == "__main__":

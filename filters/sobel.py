@@ -13,7 +13,7 @@ class SobelEdgeFilter(BaseFilter):
     name = "sobel"
     description = "PyTorch-based Sobel edge detection"
 
-    def __init__(self, threshold: float = 0.03, blur_kernel_size: int = 7, device: str = None):
+    def __init__(self, threshold: float = 0.03, blur: int = 7, device: str = None):
         """
         Initialize Sobel edge filter.
 
@@ -24,7 +24,7 @@ class SobelEdgeFilter(BaseFilter):
         """
         super().__init__()
         self.threshold = threshold
-        self.blur_kernel_size = blur_kernel_size
+        self.blur_kernel_size = blur
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         # Define Sobel kernels for X and Y gradients

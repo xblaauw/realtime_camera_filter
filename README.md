@@ -9,6 +9,7 @@ A modular video processing pipeline with multiple real-time filters for video fi
 
 - **Four built-in filters**: Sobel edge detection, cartoon/comic effect, thermal vision, and pixelation
 - **Real-time webcam processing** with live preview
+- **Virtual camera output** for video conferencing (Google Meet, Teams, Discord, etc.)
 - **Video file processing** with audio preservation
 - **GPU acceleration** via PyTorch (CUDA support)
 - **Adjustable parameters** for fine-tuning each filter
@@ -84,6 +85,52 @@ uv run webcam.py --filter pixel --pixel-size 32 --smooth
 **Controls:**
 - Press `q` to quit the preview window
 
+### Virtual Camera Output
+
+Output filtered video to a virtual camera for use in video calls (Google Meet, Teams, Discord, etc.):
+
+**Setup (one-time):**
+
+1. Install v4l2loopback kernel module:
+```bash
+sudo apt install v4l2loopback-dkms
+```
+
+2. Create virtual camera devices (2 devices: one for OBS, one for filtered output):
+```bash
+sudo modprobe v4l2loopback devices=2 video_nr=0,2 card_label="OBS,Filtered" exclusive_caps=1,1
+```
+
+3. Start OBS and enable "Start Virtual Camera" to activate `/dev/video0`
+
+**Usage:**
+
+```bash
+# Read from OBS virtual camera (video0), apply filter, output to video2
+uv run webcam.py 0 --filter thermal --virtual-cam /dev/video2
+
+# Use Sobel edge detection
+uv run webcam.py 0 --filter sobel --blur 5 --threshold 0.05 --virtual-cam /dev/video2
+
+# Use cartoon filter
+uv run webcam.py 0 --filter cartoon --color-levels 6 --virtual-cam /dev/video2
+```
+
+Then select "Filtered" camera in your video conferencing app.
+
+**Persistence:**
+
+To make v4l2loopback settings persist across reboots:
+```bash
+echo "options v4l2loopback devices=2 video_nr=0,2 card_label=\"OBS,Filtered\" exclusive_caps=1,1" | sudo tee /etc/modprobe.d/v4l2loopback.conf
+echo "v4l2loopback" | sudo tee /etc/modules-load.d/v4l2loopback.conf
+```
+
+**Troubleshooting:**
+- If `/dev/video2` doesn't exist, reload the module: `sudo rmmod v4l2loopback && sudo modprobe v4l2loopback devices=2 video_nr=0,2 card_label="OBS,Filtered" exclusive_caps=1,1`
+- If module is busy: Close all apps using the virtual cameras (Firefox, OBS, etc.), then reload
+- OBS must be restarted after reloading v4l2loopback module
+
 ### Video File Processing
 
 Process video files while preserving audio:
@@ -154,6 +201,8 @@ realtime_camera_filter/
 │   └── pixelation.py     # PixelationFilter
 ├── sources/              # Video source modules
 │   └── __init__.py       # VideoSource, VideoFileSource, WebcamSource
+├── outputs/              # Output destination modules
+│   └── __init__.py       # VirtualCameraOutput (v4l2loopback via ffmpeg)
 ├── pipeline.py           # VideoPipeline orchestration
 ├── webcam.py             # Webcam processing CLI (auto-discovers filters)
 ├── process_input.py      # Video file processing CLI (auto-discovers filters)

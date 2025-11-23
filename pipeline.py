@@ -124,17 +124,28 @@ class VideoPipeline:
         else:
             print(f"Saved to: {output_path}")
 
-    def process_realtime(self, window_name: str = "Real-time Filter"):
+    def process_realtime(self, window_name: str = "Real-time Filter", virtual_cam_device: Optional[str] = None):
         """
         Process video in real-time with preview window.
         Press 'q' to quit.
 
         Args:
             window_name: Name of the preview window
+            virtual_cam_device: Optional v4l2loopback device path (e.g., /dev/video2)
         """
         print(f"Starting real-time processing...")
         print(f"Resolution: {self.props['width']}x{self.props['height']}")
         print(f"Press 'q' to quit")
+
+        virtual_cam = None
+        if virtual_cam_device:
+            from outputs import VirtualCameraOutput
+            virtual_cam = VirtualCameraOutput(
+                virtual_cam_device,
+                self.props['width'],
+                self.props['height']
+            )
+            print(f"Writing to virtual camera: {virtual_cam_device}")
 
         try:
             while True:
@@ -144,6 +155,10 @@ class VideoPipeline:
 
                 # Apply filter
                 processed_frame = self.filter.apply(frame)
+
+                # Write to virtual camera
+                if virtual_cam:
+                    virtual_cam.write(processed_frame)
 
                 # Display
                 cv2.imshow(window_name, processed_frame)
